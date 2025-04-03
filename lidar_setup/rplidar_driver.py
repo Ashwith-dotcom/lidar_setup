@@ -52,6 +52,12 @@ class RPLidar:
         self.points = deque(maxlen=360)  # Store a full 360° scan
         self.distances = np.zeros(360)  # Distance data in mm for each degree
         self._init_empty_scan()
+        
+        # Debugging counters
+        self.valid_packets = 0
+        self.invalid_packets = 0
+        self.timeouts = 0
+        self.last_debug_time = time.time()
     
     def _init_empty_scan(self):
         """Initialize the distances array with zeros"""
@@ -76,7 +82,29 @@ class RPLidar:
             )
             if self.serial.is_open:
                 print(f"Connected to RPLiDAR on {self.port}")
-                time.sleep(1)  # Give device time to initialize
+                
+                # Properly initialize the device
+                # First ensure DTR is HIGH (motor off)
+                self.serial.dtr = True
+                time.sleep(0.1)
+                
+                # Clear any pending data
+                self.serial.reset_input_buffer()
+                
+                # Send a stop command to ensure no scan is active
+                self._send_cmd(self.STOP_BYTE)
+                time.sleep(0.1)
+                
+                # Fully reset the device
+                print("Resetting RPLiDAR...")
+                self._send_cmd(self.RESET_BYTE)
+                time.sleep(2)  # Give device time to reset
+                
+                # Clear buffers again after reset
+                self.serial.reset_input_buffer()
+                self.serial.reset_output_buffer()
+                
+                print("RPLiDAR initialization complete")
                 return True
         except serial.SerialException as e:
             print(f"Failed to connect to RPLiDAR: {e}")
@@ -400,20 +428,57 @@ class RPLidar:
         """
         Thread that continuously reads scan data
         """
+        timeout_counter = 0
+        retry_count = 0
+        
         while self.is_scanning:
             try:
-                # Read one data packet
-                # Data packet format (5 bytes): quality, angle_low, angle_high, dist_low, dist_high
-                data = self.serial.read(5)
+                # Output debug stats every 5 seconds
+                current_time = time.time()
+                if current_time - self.last_debug_time > 5:
+                    print(f"LIDAR Stats - Valid packets: {self.valid_packets}, Invalid: {self.invalid_packets}, Timeouts: {self.timeouts}")
+                    self.last_debug_time = current_time
                 
-                if len(data) != 5:
+                # Read first byte of data packet
+                response_byte = self.serial.read(1)
+                
+                # Handle timeout
+                if not response_byte:
+                    timeout_counter += 1
+                    self.timeouts += 1
+                    if timeout_counter > 10:
+                        print(f"Multiple timeouts when reading data, retry {retry_count+1}/3")
+                        retry_count += 1
+                        if retry_count >= 3:
+                            # Reset connection after too many retries
+                            print("Too many retries, resetting scan...")
+                            # Try restarting scan if we keep getting timeouts
+                            self._send_cmd(self.STOP_BYTE)
+                            time.sleep(0.1)
+                            self._send_cmd(self.SCAN_BYTE)
+                            retry_count = 0
+                        timeout_counter = 0
+                    time.sleep(0.01)
                     continue
-                    
-                # Check if first byte has the check bit (bit 7) set
-                if not (data[0] & 0x01):
+                
+                timeout_counter = 0  # Reset timeout counter
+                
+                # Read rest of packet (4 more bytes)
+                remaining_data = self.serial.read(4)
+                if len(remaining_data) < 4:
+                    print(f"Incomplete data packet: got {len(remaining_data)+1} bytes, expected 5")
+                    self.invalid_packets += 1
+                    continue
+                
+                # Complete packet
+                data = response_byte + remaining_data
+                
+                # Check if it's a valid data packet (check bits in first and second bytes)
+                if not (data[0] & 0x01 and data[1] & 0x01):
                     # Invalid data, skip this packet
+                    self.invalid_packets += 1
                     continue
-                    
+                
                 # Parse packet
                 quality = data[0] >> 2  # Remove check bits
                 angle = ((data[2] << 8) | data[1]) / 64.0  # Convert to degrees
@@ -429,6 +494,9 @@ class RPLidar:
                 # Update distance array - 0 means no data
                 if distance > 0:
                     self.distances[angle_index] = distance
+                    self.valid_packets += 1
+                else:
+                    self.invalid_packets += 1
                 
             except Exception as e:
                 print(f"Error in scan thread: {e}")
