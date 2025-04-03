@@ -40,8 +40,9 @@ def main():
         # Start motor
         print("Starting motor...")
         ser.dtr = False
-        time.sleep(1)
-        print("Motor should be spinning now")
+        print("Waiting for motor to reach proper speed (2.5 seconds)...")
+        time.sleep(2.5)  # CRITICAL: Wait 2.5s for motor to reach full speed
+        print("Motor should now be at proper speed")
         
         # Clear any existing commands
         print("Stopping any existing scan...")

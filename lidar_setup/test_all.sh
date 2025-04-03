@@ -117,6 +117,21 @@ find . -name "*.py" -type f -exec sed -i "s|/dev/ttyUSB0|$RPLIDAR_PORT|g" {} \;
 echo -e "${GREEN}Updated port in all Python scripts.${NC}"
 echo
 
+cat << "EOF"
+################################################
+#                                              #
+#    RPLiDAR A1M8 IMPLEMENTATION TESTS         #
+#                                              #
+################################################
+
+IMPORTANT: We've discovered that the most critical 
+timing issue with the RPLiDAR A1M8 is waiting for 
+the motor to reach proper speed (about 2.5 seconds)
+before attempting to scan. All implementations 
+have been updated with this fix.
+
+EOF
+
 # Run the basic serial test first
 echo -e "${BLUE}====================================${NC}"
 echo -e "${BLUE}Running Basic Serial Test${NC}"
@@ -126,7 +141,39 @@ echo -e "${YELLOW}Press Ctrl+C to stop the test and continue to the next one.${N
 echo
 read -p "Press Enter to start the test..."
 python3 serial_test.py
+
+# Add timing check
 echo
+echo "Checking for critical timing in implementations..."
+echo
+
+# Check rplidar_driver.py for proper timing
+TIMING_CHECK=$(grep -n "time.sleep(2.5)" rplidar_driver.py | wc -l)
+if [ $TIMING_CHECK -ge 1 ]; then
+    echo "✓ rplidar_driver.py includes proper motor timing"
+else
+    echo "⚠ rplidar_driver.py may have timing issues - not using 2.5s delay"
+fi
+
+# Check simple_lidar.py for proper timing
+TIMING_CHECK=$(grep -n "time.sleep(2.5)" simple_lidar.py | wc -l)
+if [ $TIMING_CHECK -ge 1 ]; then
+    echo "✓ simple_lidar.py includes proper motor timing"
+else
+    echo "⚠ simple_lidar.py may have timing issues - not using 2.5s delay"
+fi
+
+# Check force_scan_test.py for proper timing
+TIMING_CHECK=$(grep -n "time.sleep(2.5)" force_scan_test.py | wc -l)
+if [ $TIMING_CHECK -ge 1 ]; then
+    echo "✓ force_scan_test.py includes proper motor timing"
+else
+    echo "⚠ force_scan_test.py may have timing issues - not using 2.5s delay"
+fi
+
+echo
+echo "If tests fail, check TROUBLESHOOTING.md for solutions"
+echo "The most common issue is insufficient time between motor start and scan"
 
 # Run the force scan test
 echo -e "${BLUE}====================================${NC}"

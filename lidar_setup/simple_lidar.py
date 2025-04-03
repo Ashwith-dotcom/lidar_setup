@@ -54,7 +54,9 @@ class SimpleLidar:
         try:
             # Set DTR to LOW to start the motor
             self.serial.dtr = False
-            time.sleep(0.5)  # Give motor time to start
+            print("Motor started, waiting for it to reach proper speed...")
+            time.sleep(2.5)  # CRITICAL: Wait 2.5s for motor to reach proper speed
+            print("Motor should now be at proper speed")
             return True
         except Exception as e:
             print(f"Failed to start motor: {e}")
@@ -96,9 +98,10 @@ class SimpleLidar:
             if not self.connect():
                 return False
         
-        # Start motor
+        # Start motor and ensure it has time to reach proper speed
         if not self.start_motor():
             return False
+        # No additional delay needed here since start_motor already includes the 2.5s delay
         
         # Reset input buffer
         self.serial.reset_input_buffer()
@@ -108,6 +111,7 @@ class SimpleLidar:
         time.sleep(0.5)
         
         # Send scan command
+        print("Starting scan...")
         if not self._send_cmd(b'\x20'):
             self.stop_motor()
             return False
@@ -115,18 +119,49 @@ class SimpleLidar:
         # Read response descriptor
         descriptor = self.serial.read(7)
         if len(descriptor) < 7:
-            print("Failed to get scan descriptor")
+            print(f"Failed to get scan descriptor (got {len(descriptor)} bytes)")
+            # Try force scan as fallback
+            return self._start_force_scan()
+        
+        # Check if response is valid
+        if descriptor[0] != 0xA5 or descriptor[1] != 0x5A:
+            print(f"Invalid scan descriptor: {descriptor.hex()}")
+            # Try force scan as fallback
+            return self._start_force_scan()
+        
+        self.running = True
+        print("Scan started successfully")
+        return True
+    
+    def _start_force_scan(self):
+        """
+        Start LIDAR using FORCE_SCAN command as fallback
+        """
+        print("Trying FORCE_SCAN as fallback...")
+        
+        # Reset input buffer
+        self.serial.reset_input_buffer()
+        
+        # Send force scan command
+        if not self._send_cmd(b'\x21'):
+            self.stop_motor()
+            return False
+        
+        # Read response descriptor
+        descriptor = self.serial.read(7)
+        if len(descriptor) < 7:
+            print(f"Failed to get force scan descriptor (got {len(descriptor)} bytes)")
             self.stop_motor()
             return False
         
         # Check if response is valid
-        if descriptor[0] != 0xA5 or descriptor[1] != 0x5A or descriptor[2] != 0x05:
-            print("Invalid scan descriptor")
+        if descriptor[0] != 0xA5 or descriptor[1] != 0x5A:
+            print(f"Invalid force scan descriptor: {descriptor.hex()}")
             self.stop_motor()
             return False
         
         self.running = True
-        print("Scan started successfully")
+        print("Force scan started successfully")
         return True
     
     def stop(self):

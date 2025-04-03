@@ -172,4 +172,41 @@ If none of these solutions work:
 
 3. **Driver update**: Check for newer versions of the RPLiDAR SDK on GitHub.
 
-4. **Contact support**: Reach out to SLAMTEC support if the issue persists. 
+4. **Contact support**: Reach out to SLAMTEC support if the issue persists.
+
+## No Scan Data Being Received
+
+If you're able to connect to the RPLiDAR and control the motor, but aren't receiving any scan data, try these solutions:
+
+1. **Wait for Motor Speed** - THE MOST IMPORTANT FIX: We've discovered that the RPLiDAR A1M8 motor needs time to reach proper speed (about 2.5 seconds) before it can provide valid scan data. Make sure your code includes a delay of at least 2.5 seconds between starting the motor and sending the scan command.
+
+2. **Try FORCE_SCAN** - If the regular SCAN command doesn't work, try the FORCE_SCAN command which can be more reliable with some hardware setups:
+   ```python
+   # Send FORCE_SCAN command
+   ser.write(b'\xA5\x21\x00')
+   ```
+
+3. **Check Power Supply** - Ensure stable power to both the Raspberry Pi and the RPLiDAR. Power issues can cause the motor to spin but not provide reliable data.
+
+4. **Check USB-to-UART Adapter** - Make sure your adapter supports DTR control for proper motor operation.
+
+5. **Check Data Parsing** - Ensure you're correctly parsing the scan data packets according to the A1M8 protocol.
+
+6. **Try Multiple Command Methods** - Sometimes direct command sequences work better than the RPLIDAR protocol. See the "Command Examples" section below.
+
+## Common Timing Issues
+
+Timing is critical for proper operation of the RPLiDAR A1M8:
+
+1. **Motor Start to Scan Delay** - Always wait at least 2.5 seconds after starting the motor before sending scan commands. This allows the motor to reach proper scanning speed.
+
+2. **Command Sequencing** - Follow the proper command sequence:
+   - Connect to serial port
+   - Start motor (set DTR LOW)
+   - Wait 2.5 seconds
+   - Stop any existing scan (STOP command)
+   - Send SCAN or FORCE_SCAN command
+   - Read response descriptor
+   - Read data packets
+
+3. **Between-Command Delays** - Include small delays (0.1s) between commands to ensure the device has time to process them. 

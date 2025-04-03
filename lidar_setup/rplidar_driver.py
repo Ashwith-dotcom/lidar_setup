@@ -228,7 +228,9 @@ class RPLidar:
             # Set DTR to LOW to start the motor
             self.serial.dtr = False
             self.motor_running = True
-            time.sleep(0.5)  # Wait for motor to reach speed
+            print("Motor started, waiting for it to reach proper speed...")
+            time.sleep(2.5)  # CRITICAL: Wait 2.5s for motor to reach proper speed
+            print("Motor should now be at proper speed")
             return True
         except Exception as e:
             print(f"Failed to start motor: {e}")
@@ -256,7 +258,7 @@ class RPLidar:
     
     def start_scan(self):
         """
-        Start continuous scanning mode
+        Start RPLiDAR scanning
         
         Returns:
             bool: True if scan started successfully, False otherwise
@@ -265,24 +267,41 @@ class RPLidar:
             return True
             
         try:
-            # Start motor if not already running
+            # Clear existing scan
+            self._init_empty_scan()
+            
+            # Make sure the motor is running
             if not self.motor_running:
                 self.start_motor()
-                
-            # Send scan command
+            else:
+                # If motor is already running, still need to ensure it's at proper speed
+                print("Motor already running, ensuring it's at proper speed...")
+                time.sleep(1.0)  # Give motor time to stabilize
+            
+            # Stop any existing scan first
+            self._send_cmd(self.STOP_BYTE)
+            time.sleep(0.1)  # Wait for stop to complete
+            
+            # Clear input buffer before starting scan
+            self.serial.reset_input_buffer()
+            
+            # Start scan command
+            print("Starting scan...")
             self._send_cmd(self.SCAN_BYTE)
             
             # Read response descriptor
             descriptor = self.serial.read(self.DESCRIPTOR_LEN)
             if len(descriptor) < self.DESCRIPTOR_LEN:
-                raise Exception("Failed to get scan descriptor")
-                
-            # Verify it's a valid scan response
-            if descriptor[0] != 0xA5 or descriptor[1] != 0x5A or descriptor[2] != 0x05:
-                raise Exception("Invalid scan descriptor")
-                
-            # Start scan thread
+                raise Exception(f"Failed to get scan descriptor, received {len(descriptor)} bytes")
+            
+            # Validate descriptor
+            if descriptor[0] != 0xA5 or descriptor[1] != 0x5A:
+                raise Exception(f"Invalid scan descriptor: {descriptor.hex()}")
+            
+            print("Scan started successfully")
             self.is_scanning = True
+            
+            # Start scanning thread
             self.scan_thread = threading.Thread(target=self._scan_thread)
             self.scan_thread.daemon = True
             self.scan_thread.start()
@@ -290,7 +309,63 @@ class RPLidar:
             return True
         except Exception as e:
             print(f"Failed to start scan: {e}")
-            self.stop_motor()
+            # Try force scan as fallback
+            return self.start_force_scan()
+    
+    def start_force_scan(self):
+        """
+        Start RPLiDAR scanning using FORCE_SCAN command
+        This is more reliable in some situations
+        
+        Returns:
+            bool: True if force scan started successfully, False otherwise
+        """
+        if self.is_scanning:
+            return True
+            
+        try:
+            # Clear existing scan
+            self._init_empty_scan()
+            
+            # Make sure the motor is running
+            if not self.motor_running:
+                self.start_motor()
+            else:
+                # If motor is already running, still need to ensure it's at proper speed
+                print("Motor already running, ensuring it's at proper speed...")
+                time.sleep(1.0)  # Give motor time to stabilize
+            
+            # Stop any existing scan first
+            self._send_cmd(self.STOP_BYTE)
+            time.sleep(0.1)  # Wait for stop to complete
+            
+            # Clear input buffer before starting scan
+            self.serial.reset_input_buffer()
+            
+            # Start force scan command
+            print("Starting force scan...")
+            self._send_cmd(self.FORCE_SCAN_BYTE)
+            
+            # Read response descriptor
+            descriptor = self.serial.read(self.DESCRIPTOR_LEN)
+            if len(descriptor) < self.DESCRIPTOR_LEN:
+                raise Exception(f"Failed to get force scan descriptor, received {len(descriptor)} bytes")
+            
+            # Validate descriptor
+            if descriptor[0] != 0xA5 or descriptor[1] != 0x5A:
+                raise Exception(f"Invalid force scan descriptor: {descriptor.hex()}")
+            
+            print("Force scan started successfully")
+            self.is_scanning = True
+            
+            # Start scanning thread
+            self.scan_thread = threading.Thread(target=self._scan_thread)
+            self.scan_thread.daemon = True
+            self.scan_thread.start()
+            
+            return True
+        except Exception as e:
+            print(f"Failed to start force scan: {e}")
             return False
     
     def stop_scan(self):

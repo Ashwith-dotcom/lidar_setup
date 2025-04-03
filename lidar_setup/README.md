@@ -149,4 +149,12 @@ To integrate with your own robot:
 
 - [SLAMTEC RPLiDAR A1M8 User Manual](https://bucket-download.slamtec.com/af084741a46129dfcf2b516110be558561d55767/LM108_SLAMTEC_rplidarkit_usermanual_A1M8_v2.2_en.pdf)
 - [RPLiDAR SDK](https://github.com/Slamtec/rplidar_sdk)
-- [RPLiDAR SDK Documentation](https://bucket-download.slamtec.com/6957283725b66750890024d1f0d12940fa079e06/LR002_SLAMTEC_rplidar_sdk_v2.0_en.pdf) 
+- [RPLiDAR SDK Documentation](https://bucket-download.slamtec.com/6957283725b66750890024d1f0d12940fa079e06/LR002_SLAMTEC_rplidar_sdk_v2.0_en.pdf)
+
+## Important Updates & Fixes
+
+### Critical Timing Fix
+
+We've discovered that the most critical issue with the RPLiDAR A1M8 is proper timing between starting the motor and sending scan commands. **The motor requires approximately 2.5 seconds to reach proper speed before it can provide valid scan data.**
+
+All scripts in this folder have been updated to include this critical delay. If you were experiencing issues with receiving scan data (even though the motor was spinning), this timing fix should resolve the problem. 
